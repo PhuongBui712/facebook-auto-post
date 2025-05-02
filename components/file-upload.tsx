@@ -2,13 +2,14 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
-import Image from "next/image"
+import { useState, useRef, useCallback } from "react"
 import { FileImage, Upload, X, Film, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTranslation } from "@/lib/use-translation"
 import { cn, validateFileType, validateFileSize, validateVideoDuration, formatFileSize } from "@/lib/utils"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import VideoPreview from "./video-preview"
+import ImagePreview from "./image-preview"
 
 interface FileUploadProps {
   accept: string
@@ -42,7 +43,7 @@ export default function FileUpload({
   const inputRef = useRef<HTMLInputElement>(null)
   const { t } = useTranslation()
 
-  const handleDrag = (e: React.DragEvent) => {
+  const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     if (e.type === "dragenter" || e.type === "dragover") {
@@ -50,62 +51,85 @@ export default function FileUpload({
     } else if (e.type === "dragleave") {
       setDragActive(false)
     }
-  }
+  }, [])
 
-  const validateFiles = async (files: File[]): Promise<File[]> => {
-    setError(null)
-    const validFiles: File[] = []
+  const validateFiles = useCallback(
+    async (files: File[]): Promise<File[]> => {
+      setError(null)
+      const validFiles: File[] = []
 
-    for (const file of files) {
-      // Step 1: Check file type
-      const typeResult = validateFileType(file, type)
-      if (!typeResult.isValid) {
-        setError(typeResult.message || `Invalid file type: ${file.name}`)
-        return []
-      }
-
-      // Step 2: Check file size if specified
-      if (maxSizeMB) {
-        const maxSizeBytes = maxSizeMB * 1024 * 1024
-        const sizeResult = validateFileSize(file, maxSizeBytes)
-        if (!sizeResult.isValid) {
-          setError(sizeResult.message || `File too large: ${file.name}`)
+      for (const file of files) {
+        // Step 1: Check file type
+        const typeResult = validateFileType(file, type)
+        if (!typeResult.isValid) {
+          setError(typeResult.message || `Invalid file type: ${file.name}`)
           return []
         }
-      }
 
-      // Step 3: Check video duration if applicable
-      if (type === "video" && minDuration && maxDuration) {
-        try {
-          const durationResult = await validateVideoDuration(file, minDuration, maxDuration)
-          if (!durationResult.isValid) {
-            setError(durationResult.message || `Invalid video duration: ${file.name}`)
+        // Step 2: Check file size if specified
+        if (maxSizeMB) {
+          const maxSizeBytes = maxSizeMB * 1024 * 1024
+          const sizeResult = validateFileSize(file, maxSizeBytes)
+          if (!sizeResult.isValid) {
+            setError(sizeResult.message || `File too large: ${file.name}`)
             return []
           }
-        } catch (error) {
-          setError(`Could not validate video: ${file.name}`)
-          return []
         }
+
+        // Step 3: Check video duration if applicable
+        if (type === "video" && minDuration && maxDuration) {
+          try {
+            const durationResult = await validateVideoDuration(file, minDuration, maxDuration)
+            if (!durationResult.isValid) {
+              setError(durationResult.message || `Invalid video duration: ${file.name}`)
+              return []
+            }
+          } catch (error) {
+            setError(`Could not validate video: ${file.name}`)
+            return []
+          }
+        }
+
+        validFiles.push(file)
       }
 
-      validFiles.push(file)
-    }
+      return validFiles
+    },
+    [type, maxSizeMB, minDuration, maxDuration],
+  )
 
-    return validFiles
-  }
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setDragActive(false)
 
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const files = Array.from(e.dataTransfer.files).filter((file) =>
+          file.type.match(accept.replace(/,/g, "|").replace(/\*/g, ".*")),
+        )
 
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const files = Array.from(e.dataTransfer.files).filter((file) =>
-        file.type.match(accept.replace(/,/g, "|").replace(/\*/g, ".*")),
-      )
+        if (files.length > 0) {
+          const validatedFiles = await validateFiles(files)
+          if (validatedFiles.length > 0) {
+            if (multiple) {
+              onChange([...value, ...validatedFiles])
+            } else {
+              onChange([validatedFiles[0]])
+            }
+          }
+        }
+      }
+    },
+    [accept, multiple, onChange, validateFiles, value],
+  )
 
-      if (files.length > 0) {
+  const handleChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0) {
+        const files = Array.from(e.target.files)
         const validatedFiles = await validateFiles(files)
+
         if (validatedFiles.length > 0) {
           if (multiple) {
             onChange([...value, ...validatedFiles])
@@ -113,40 +137,29 @@ export default function FileUpload({
             onChange([validatedFiles[0]])
           }
         }
-      }
-    }
-  }
 
-  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const files = Array.from(e.target.files)
-      const validatedFiles = await validateFiles(files)
-
-      if (validatedFiles.length > 0) {
-        if (multiple) {
-          onChange([...value, ...validatedFiles])
-        } else {
-          onChange([validatedFiles[0]])
+        // Reset the input value so the same file can be selected again if needed
+        if (inputRef.current) {
+          inputRef.current.value = ""
         }
       }
+    },
+    [multiple, onChange, validateFiles, value],
+  )
 
-      // Reset the input value so the same file can be selected again if needed
-      if (inputRef.current) {
-        inputRef.current.value = ""
-      }
-    }
-  }
+  const handleRemove = useCallback(
+    (index: number) => {
+      setError(null)
+      const newFiles = [...value]
+      newFiles.splice(index, 1)
+      onChange(newFiles)
+    },
+    [onChange, value],
+  )
 
-  const handleRemove = (index: number) => {
-    setError(null)
-    const newFiles = [...value]
-    newFiles.splice(index, 1)
-    onChange(newFiles)
-  }
-
-  const handleClick = () => {
+  const handleClick = useCallback(() => {
     inputRef.current?.click()
-  }
+  }, [])
 
   const renderIcon = () => {
     if (type === "photo") {
@@ -189,19 +202,12 @@ export default function FileUpload({
     return (
       <div className={cn("mt-4 space-y-4", multiple ? "grid grid-cols-2 gap-4 md:grid-cols-3" : "")}>
         {value.map((file, index) => (
-          <div key={index} className="relative rounded-lg border">
+          <div key={`${file.name}-${index}`} className="relative rounded-lg border">
             {file.type.includes("image") ? (
-              <div className="relative aspect-square overflow-hidden rounded-lg">
-                <Image
-                  src={URL.createObjectURL(file) || "/placeholder.svg"}
-                  alt={file.name}
-                  fill
-                  className="object-cover"
-                />
-              </div>
+              <ImagePreview file={file} />
             ) : (
               <div className="flex justify-center p-4">
-                <video src={URL.createObjectURL(file)} controls className="max-h-[300px] w-auto rounded-lg" />
+                <VideoPreview file={file} />
               </div>
             )}
             <Button

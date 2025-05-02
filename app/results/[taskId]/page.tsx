@@ -63,7 +63,7 @@ export default function ResultPage() {
 
     fetchResult()
     // Poll for results every 5 seconds
-    const interval = setInterval(fetchResult, 5000)
+    const interval = setInterval(fetchResult, 18000)
 
     return () => clearInterval(interval)
   }, [taskId, t])
