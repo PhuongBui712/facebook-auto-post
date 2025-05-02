@@ -126,7 +126,7 @@ export default function StoryForm() {
             <div className="space-y-2">
               <Label>{t("Photo")}</Label>
               <FileUploader
-                accept="image/*"
+                accept="image/png,image/jpeg,image/jpg,image/webp"
                 multiple={false}
                 onChange={setPhotoPath}
                 value={photo}
@@ -140,12 +140,15 @@ export default function StoryForm() {
             <div className="space-y-2">
               <Label>{t("Video")}</Label>
               <FileUploader
-                accept="video/mp4,video/mov"
+                accept="video/mp4"
                 multiple={false}
                 onChange={setVideoPath}
                 value={video}
                 setValue={setVideo}
                 type="video"
+                minDuration={3}
+                maxDuration={60}
+                videoType="story"
               />
             </div>
           )}

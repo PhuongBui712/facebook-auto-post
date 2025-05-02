@@ -4,10 +4,11 @@ import type React from "react"
 
 import { useState, useRef } from "react"
 import Image from "next/image"
-import { FileImage, Upload, X, Film } from "lucide-react"
+import { FileImage, Upload, X, Film, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTranslation } from "@/lib/use-translation"
-import { cn } from "@/lib/utils"
+import { cn, validateFileType, validateFileSize, validateVideoDuration, formatFileSize } from "@/lib/utils"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface FileUploadProps {
   accept: string
@@ -17,6 +18,10 @@ interface FileUploadProps {
   type: "photo" | "video"
   className?: string
   isUploading?: boolean
+  maxSizeMB?: number
+  minDuration?: number
+  maxDuration?: number
+  videoType?: "story" | "reel" | "video"
 }
 
 export default function FileUpload({
@@ -27,8 +32,13 @@ export default function FileUpload({
   type,
   className,
   isUploading = false,
+  maxSizeMB,
+  minDuration,
+  maxDuration,
+  videoType,
 }: FileUploadProps) {
   const [dragActive, setDragActive] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const { t } = useTranslation()
 
@@ -42,7 +52,49 @@ export default function FileUpload({
     }
   }
 
-  const handleDrop = (e: React.DragEvent) => {
+  const validateFiles = async (files: File[]): Promise<File[]> => {
+    setError(null)
+    const validFiles: File[] = []
+
+    for (const file of files) {
+      // Step 1: Check file type
+      const typeResult = validateFileType(file, type)
+      if (!typeResult.isValid) {
+        setError(typeResult.message || `Invalid file type: ${file.name}`)
+        return []
+      }
+
+      // Step 2: Check file size if specified
+      if (maxSizeMB) {
+        const maxSizeBytes = maxSizeMB * 1024 * 1024
+        const sizeResult = validateFileSize(file, maxSizeBytes)
+        if (!sizeResult.isValid) {
+          setError(sizeResult.message || `File too large: ${file.name}`)
+          return []
+        }
+      }
+
+      // Step 3: Check video duration if applicable
+      if (type === "video" && minDuration && maxDuration) {
+        try {
+          const durationResult = await validateVideoDuration(file, minDuration, maxDuration)
+          if (!durationResult.isValid) {
+            setError(durationResult.message || `Invalid video duration: ${file.name}`)
+            return []
+          }
+        } catch (error) {
+          setError(`Could not validate video: ${file.name}`)
+          return []
+        }
+      }
+
+      validFiles.push(file)
+    }
+
+    return validFiles
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setDragActive(false)
@@ -53,27 +105,40 @@ export default function FileUpload({
       )
 
       if (files.length > 0) {
-        if (multiple) {
-          onChange([...value, ...files])
-        } else {
-          onChange([files[0]])
+        const validatedFiles = await validateFiles(files)
+        if (validatedFiles.length > 0) {
+          if (multiple) {
+            onChange([...value, ...validatedFiles])
+          } else {
+            onChange([validatedFiles[0]])
+          }
         }
       }
     }
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files)
-      if (multiple) {
-        onChange([...value, ...files])
-      } else {
-        onChange([files[0]])
+      const validatedFiles = await validateFiles(files)
+
+      if (validatedFiles.length > 0) {
+        if (multiple) {
+          onChange([...value, ...validatedFiles])
+        } else {
+          onChange([validatedFiles[0]])
+        }
+      }
+
+      // Reset the input value so the same file can be selected again if needed
+      if (inputRef.current) {
+        inputRef.current.value = ""
       }
     }
   }
 
   const handleRemove = (index: number) => {
+    setError(null)
     const newFiles = [...value]
     newFiles.splice(index, 1)
     onChange(newFiles)
@@ -97,6 +162,25 @@ export default function FileUpload({
     } else {
       return t("Click or Drag & Drop video here")
     }
+  }
+
+  const getRequirementsText = () => {
+    if (type === "photo") {
+      return t("Supported formats: PNG, JPG, JPEG, WEBP")
+    } else if (type === "video") {
+      let text = t("Supported formats: MP4")
+
+      if (videoType === "story" && minDuration && maxDuration) {
+        text += ` • ${t("Duration")}: ${minDuration}-${maxDuration} ${t("seconds")}`
+      } else if (videoType === "reel" && minDuration && maxDuration) {
+        text += ` • ${t("Duration")}: ${minDuration}-${maxDuration} ${t("seconds")}`
+      } else if (videoType === "video" && maxSizeMB) {
+        text += ` • ${t("Max size")}: ${maxSizeMB / 1024} GB`
+      }
+
+      return text
+    }
+    return ""
   }
 
   const renderPreview = () => {
@@ -129,7 +213,10 @@ export default function FileUpload({
               <X className="h-4 w-4" />
               <span className="sr-only">{t("Remove")}</span>
             </Button>
-            <div className="p-2 text-xs text-muted-foreground">{file.name}</div>
+            <div className="p-2 text-xs text-muted-foreground">
+              {file.name}
+              <div>{formatFileSize(file.size)}</div>
+            </div>
           </div>
         ))}
       </div>
@@ -149,12 +236,20 @@ export default function FileUpload({
 
   return (
     <div className={className}>
+      {error && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
       {value.length === 0 && (
         <div
           className={cn(
             "flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors",
             dragActive ? "border-primary bg-muted/50" : "border-muted-foreground/25",
             isUploading ? "opacity-50 pointer-events-none" : "",
+            error ? "border-red-500" : "",
           )}
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
@@ -165,9 +260,7 @@ export default function FileUpload({
           {renderIcon()}
           <div className="mt-2 text-center">
             <p className="text-sm font-medium">{renderPlaceholder()}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {type === "photo" ? t("Supported formats: JPG, PNG, GIF, WEBP") : t("Supported formats: MP4, MOV")}
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{getRequirementsText()}</p>
           </div>
           <Button
             type="button"

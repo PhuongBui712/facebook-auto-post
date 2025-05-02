@@ -108,19 +108,21 @@ export default function VideoForm() {
           <div className="space-y-2">
             <Label>{t("Video")}</Label>
             <FileUploader
-              accept="video/mp4,video/mov"
+              accept="video/mp4"
               multiple={false}
               onChange={setVideoPath}
               value={video}
               setValue={setVideo}
               type="video"
+              maxSizeMB={2048} // 2GB
+              videoType="video"
             />
           </div>
 
           <div className="space-y-2">
             <Label>{language === "en" ? "Thumbnail (Optional)" : "Ảnh bìa (Không bắt buộc)"}</Label>
             <FileUploader
-              accept="image/*"
+              accept="image/png,image/jpeg,image/jpg,image/webp"
               multiple={false}
               onChange={setThumbnailPath}
               value={thumbnail}

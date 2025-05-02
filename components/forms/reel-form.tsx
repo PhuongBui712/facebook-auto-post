@@ -104,12 +104,15 @@ export default function ReelForm() {
           <div className="space-y-2">
             <Label>{t("Video")}</Label>
             <FileUploader
-              accept="video/mp4,video/mov"
+              accept="video/mp4"
               multiple={false}
               onChange={setVideoPath}
               value={video}
               setValue={setVideo}
               type="video"
+              minDuration={3}
+              maxDuration={90}
+              videoType="reel"
             />
           </div>
 

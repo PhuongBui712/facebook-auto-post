@@ -100,7 +100,7 @@ export default function FeedForm() {
           <div className="space-y-2">
             <Label>{t("Photos")}</Label>
             <FileUploader
-              accept="image/*"
+              accept="image/png,image/jpeg,image/jpg,image/webp"
               multiple={true}
               onChange={setPhotoPaths}
               value={photos}

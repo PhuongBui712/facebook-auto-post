@@ -13,6 +13,10 @@ interface FileUploaderProps {
   setValue: (files: File[]) => void
   type: "photo" | "video"
   className?: string
+  maxSizeMB?: number
+  minDuration?: number
+  maxDuration?: number
+  videoType?: "story" | "reel" | "video"
 }
 
 export default function FileUploader({
@@ -23,6 +27,10 @@ export default function FileUploader({
   setValue,
   type,
   className,
+  maxSizeMB,
+  minDuration,
+  maxDuration,
+  videoType,
 }: FileUploaderProps) {
   const [isUploading, setIsUploading] = useState(false)
   const { toast } = useToast()
@@ -92,6 +100,10 @@ export default function FileUploader({
       type={type}
       className={className}
       isUploading={isUploading}
+      maxSizeMB={maxSizeMB}
+      minDuration={minDuration}
+      maxDuration={maxDuration}
+      videoType={videoType}
     />
   )
 }
